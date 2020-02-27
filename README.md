@@ -18,260 +18,6 @@ Some experts have written reports to demonstrate its benefits, along with rules 
 
 
 ------
-
-
-## State of the art
-In our research process, we identified two solutions that perform state of the art query sampling. First, we will discuss the Microsoft’s Quickr system to perform sampling queries on Big Data. Then, we will present BlinkDB, a query engine to run distributed approximate SQL queries, which is being developed jointly by the MIT and UC Berkley. 
-
-Additionally, we will review the research that has already been made to perform approximate queries in Spark, although so far, we have only found implementations using RDD and nothing open-sourced. 
-
- 
- 
-## QuickR: Lazily Approximating Complex AdHoc Queries in Big Data Clusters 
-
-
-
-    
-https://www.microsoft.com/en-us/research/wp-content/uploads/2016/06/quickr-2.pdf 
-
-In the year 2016, Microsoft presented a system called QuickR that approximates the answer to complex queries by injecting samplers on the fly and without requiring pre-sampled data. Through a cost-based optimizer, they generate query plans with appropriate sample operators at the most adequate location, providing also an accuracy analysis to not miss any little group. The results show that QuickR improves substantially the performance in a large segment of TPC-DS benchmark queries, using a 2x fewer resources in the cluster and with a mean error of only the 10% in aggregations.  
-
-
-How did they accomplish that? 
-
-By analyzing the queries and taking into account the statistics of the tables, the system decides whether to sample the data or not, and which sampling technique will deliver the most accurate answer. In the paper, they describe the implementation of three different types of sampling techniques, which will be described with examples in the next section: 
-
-- **Uniform**: All elements have the same probability to be selected. 
-
-- **Universe**: Picks a p fraction of the values of the columns in a given set; all rows with such value are passed by this sampler. 
-
-- **Distinct**: Sampling technique that guarantees all groups in the data  are selected at least a determinate number of times.  
-
-They also implement logical optimization rules to propagate the operator through projections and joins (left, right, both or none of them) to retrieve less data in early stages of the query. The system also allows exploring confidence intervals and other estimators of individual operators after the query completes, as part of an accuracy analysis. 
-
-An analysis of approximability of big data queries shows: 
-
-1. Distribution of queries over input datasets is heavy-tailed. Individual queries use many columns and different combinations of columns (in projection/filtering) such that the additional storage space required to store samples can be prohibitively large. 
-
-2. Queries typically have aggregation operators, and output results are by many orders of magnitude smaller than inputs, so they are approximable. 
-
-3. Several factors hinder approximability: queries use a diverse set of columns requiring extensive stratification. Many queries join large input relations. 
-
-4. Queries are deep, involving multiple effective passes over data including network shuffles. 
-
-------
-## Experience with Approximating Queries in Microsoft’s Production Big-Data Clusters 
-
-    
-    
-https://www.microsoft.com/en-us/research/uploads/prod/2019/04/p698-kandula.pdf  
-
-Three years later than the previous paper talking about the QuickR solution, the error approximation and pushdown rules, they published their overall experience (over tens of production clusters) on using this type of query time sampling. Just to remember, the two main steps of this technique are:  
-
-1. Users add sampling operators on the query 
-
-2. The Query Optimizer transforms the predicate pushing down the operators while ensuring the accuracy is still intact  
-
-Their findings indicate that QuickR proved to be very valuable in production environments. In table 1, we provide a résumé of the conclusions, but you can compare the charts and results by following the link to the published paper.  
-
-
-
-
-- All three samplers are used evenly 
-
-- One third of the queries use multiple sample operators.  
-
-<p align="center">
-    <img src="images/microsoft.png" >
-</p>
-
-
-- The median processing rate for samplers is over 100MBps. Over 95% of samplers process input at over 100Mbps (low processing rate means very little data!) 
-
-- A significant majority of the samplers doesn’t have memory footprint 
-
-- Distinct sampler has more complex implementation (it had to track groups that had a large number of rows) 
-
-- About 30% of the samplers picks less than 1% fraction of input. Many samplers also pick 10% (this was the recommended setting of the manual they provided)  
-
-- Fewer than 10% of the samplers use a probability assignment above 0.25 
-
-- 80% of universe samples are over a single column 
-
-- The 90% of the input column sets of distinct is between 1 and 6 
-
-- Among the jobs that use samplers, only 2% never had to be re-executed. And over the 80% repeat at least 100x each.  
-
-
-The results on the TPC-H Benchmark (http://www.tpc.org/tpc_documents_current_versions/pdf/tpc-h_v2.18.0.pdf) showed that: 
-
-
-- Roughly 8 of 22 queries are unsampled 
-
-- Queries 5, 7, 8 and 9 improve substantially their processing cost  
-
-------
-## BlinkDB 
-
-    
-https://sameeragarwal.github.io/blinkdb_eurosys13.pdf 
-
-BlinkDB proposes and implements an approximate query engine for running interactive SQL queries on large volumes of data. It supports ad-hoc queries with error and response time constraints. 
-
-BlinkDB implements a multi-dimensional sampling strategy that builds and maitnains a variety of samples. Also, it implements a run-time dynamic sample selection strategy that uses parts of a sample to estimate query selectivity and chooses the best samples for satisfying query constraints.  
-
-It handles a variety of queries with diverse error and time constraints. 2s on 17 TB of data with 90-98% accuracy. 
-
-
-<p align="center">
-    <img src="images/blinkdb.png" >
-   
-</p>
-<br/>
-
-
-
-To store differently stratified samples, a-priori storage techniques typically use sample storage of 1x to 10x the size of the input. We’ve seen in a benchmark that the smallest input set used by 20% of queries is 3PB. Hence, assuming input popularity can be predicted perfectly, covering 20% of queries will require between 3PB and 30PB of a-priori samples. Such a large sample set is already a substantial fraction of the total input size (120PB).  
-
-------
-## Approximation error bounds in Spark 
-
-https://arxiv.org/pdf/1812.01823.pdf 
-
-This is the single implementation that we have found, not as an open source project, that involves the Spark engine. The publication goes back to 2019 and presents the challenge of Error Bound Estimation. 
-<br/>
-
-
-Data processing pipelines often transform the input dataset in complex ways before aggregating values. This framework  permits sampling at arbitrary points (same as the Microsoft one) before aggregation. Internally constructs a data provenance tree to maintain information about how transformations are clustering data output items to be aggregated. Later on, uses this structure along with multistage sampling theories to compute the approximate aggregate values and corresponding error bounds. Finally, an algorithm is triggered to accomplish the user specifications through dynamic sampling percentages. 
-
-There’s no reference nor knowledge that Spark SQL is being used in this system. They only included some new functions on RDDs  (to support partition/input data item sampling and aggregateByKeyMultiStage function), modifying either the core or using an external package to create the whole logic of it.  
-
-In the end, the evaluation shows that:  
-
-- Multi-stage sampling significantly reduces execution time 
-
-- Partition sampling can lead to larger exec time savings (dropping partitions eliminates overhead) 
-
-- Significant fractions of the keys can be lost. Sampling rates for Word Co-Ocurrence (text mining application) reduce execution time by 40% at the expense of losing 25% of the keys. For these lost keys, the grouping count was of 0.08 * 10 –4 
-
-- Relatively high partition sampling rates (e.g 50%)  can impact error bounds for more rare keys  (increasing the number of lost keys)    
-
-
-------
-## Spark SQL 
-
-https://databricks.com/blog/2015/04/13/deep-dive-into-spark-sqls-catalyst-optimizer.html
-
-
-Understanding the way that Spark SQL works nowadays is key to go further in this investigation. What is already implemented? How  can it be optimized? Is it  mandatory to change the base code? 
-
-The newest component in Apache Spark SQL was Catalyst Optimizer, which is a Query Optimizer that improves executions by applying a series of logical and physical strategies, so the user does not have to worry about techniques such as pushdown operators or behavior of the system. 
-
-The pipeline goes as follow: 
-<center>   
-    <img src="images/catalyst.png">
-</center> 
-    
-
-
-
-
-Catalyst’s general tree transformation framework it's used in four phases, as shown above: (1) analyzing a logical plan to resolve references, (2) logical plan optimization, (3) physical planning, and (4) code generation to compile parts of the query to Java bytecode. 
-
-The two main elements for mantaining coherence between these stages are:
-- Trees: The main data type in Catalyst is a tree composed of node objets. They are immutable and can be manipulated using functional transformations. They can be seen as the materialization of a Logical Plan, Optimized Logical Plan and Physical Plan. 
-- Rules: Trees can be manipulated using rules, which are functions from a tree to another tree. The most common approach is to use a set of pattern matching functions that find and replace subtrees with a specific structure.
-
-
-### **Sample Operator**
-
-
-The keyword that is used to perform samples is <b>TABLESAMPLE (X PERCENT/ROWS)</b>:  It can be expressed in terms of either a percentage (must be between 0 and 100) or a fixed number of input rows. In the end it will return an approximate number of rows based upon the input criteria.  
-    
-After the query is analyzed, the TABLESAMPLE is transformed to a logical Sample operator, that includes more parameters with default values such as:
-- <i>lowerBound</i>: Lower-bound of the sampling probability (usually 0.0)
-- <i>upperBound</i>: Upper-bound of the sampling probability. The expected fraction sampled will be ub - lb.
-- <i>withReplacement</i>: wether to take out the elements from the orirignal dataset that appears in the sample or mantain them. False as default
-- <i>seed</i>: a seed for sampling. Default at random
-    
-After setting the Tree, the Sample is no longer optimized logically, and the execution would sample at random following a Bernoulli trial on partitioning the data if it's set withoutReplacement or a Poisson distribution (normal) when you don't lose any element. 
-    
-<br/>
-Right now, the spark sample implementation does not allow the logical operator to be pushed down in the Logical Plan Tree. The next Figure shows a simple Logical Plan Tree of a Join operation with a Tablesample at the end of it: 
-
-<p align="center">
-    <img src="images/wopushdown.png" width="400" height="400">
-</p>
-
-Of course the user can acknowledge the distribution and sizes of the tables and change the location of the operator in the query, but to make things even easier for them and move the computation closer to datasources, we want to integrate pushdown for the sampler operator. In this case the sampler would be performed at the largest table (user). 
- 
-<p align="center">
-    <img src="images/pushdowned.png" width="400" height="400">
-</p>
-
-
-
-Here's a more practical example of the Spark behaviour when you use the TABLESAMPLE expression on a query. 
-
-
-
-```python
-(1 to 10).map(x => ("a", x)).toDS.createOrReplaceTempView("ta")
-(1 to 10).map(x => ("b", x)).toDS.createOrReplaceTempView("tb")
-
-spark.sql(s"""
-            SELECT *
-            FROM (
-                SELECT * 
-                FROM ta 
-                JOIN tb 
-                    ON ta._2 == tb._2
-                )
-            TABLESAMPLE(1 PERCENT)""").explain(true)
-```
-
-    == Parsed Logical Plan ==
-    'Project [*]
-    +- 'SubqueryAlias `__auto_generated_subquery_name`
-       +- 'Sample 0.0, 0.01, false, 448
-          +- 'Project [*]
-             +- 'Join Inner, ('ta._2 = 'tb._2)
-                :- 'UnresolvedRelation `ta`
-                +- 'UnresolvedRelation `tb`
-    
-    == Analyzed Logical Plan ==
-    _1: string, _2: int, _1: string, _2: int
-    Project [_1#77, _2#78, _1#82, _2#83]
-    +- SubqueryAlias `__auto_generated_subquery_name`
-       +- Sample 0.0, 0.01, false, 448
-          +- Project [_1#77, _2#78, _1#82, _2#83]
-             +- Join Inner, (_2#78 = _2#83)
-                :- SubqueryAlias `ta`
-                :  +- LocalRelation [_1#77, _2#78]
-                +- SubqueryAlias `tb`
-                   +- LocalRelation [_1#82, _2#83]
-    
-    == Optimized Logical Plan ==
-    Sample 0.0, 0.01, false, 448
-    +- Join Inner, (_2#78 = _2#83)
-       :- LocalRelation [_1#77, _2#78]
-       +- LocalRelation [_1#82, _2#83]
-    
-    == Physical Plan ==
-    *(1) Sample 0.0, 0.01, false, 448
-    +- *(1) BroadcastHashJoin [_2#78], [_2#83], Inner, BuildRight
-       :- LocalTableScan [_1#77, _2#78]
-       +- BroadcastExchange HashedRelationBroadcastMode(List(cast(input[1, int, false] as bigint)))
-          +- LocalTableScan [_1#82, _2#83]
-
-
-
-As you can see, the Sample operation appears at the top of the query tree plan, meaning that would be executed 
-after the join.
-It always mantains the position on the tree, it's not pushed down through any operator. 
-
-
-------
 ## Sampling types
 
 In this notebook we present a few examples to better understand the different types of samples that exist and when they should be used.
@@ -330,9 +76,11 @@ def randomizeCity= scala.util.Random.nextInt(5).toLong +1
 
 Also known as Simple Random Sampling(SRS), it is assumed that the population is independent and identically distributed (i.i.d). The sample size required to reach a prespecified precision is based on the dispersion variance of the population and the survey precision required. Then the sample units are chosen from the population independently with equal probability, and inferences are conducted using the sample. I.e. We will use this kind of sample when every row from a table has the same probability of being selected. 
 
+
 <p align="center">
     <img src="images/uniform-sample.png" width="500" height="500">
 </p>
+
 
 ```python
 (1 to 100000).map(x => User(x, randomizeCity)).toDS.createOrReplaceTempView("users")
@@ -459,10 +207,10 @@ error.show()
  
 The uniform sample is simple but it has some issues that limit it from being used widely. Queries with group-by such as `SELECT X, SUM(Y), GROUP BY X` can miss groups in the answer, especially those corresponding to values of X that have low support. For such queries, we must use a different kind of sample, such as the distinct sampler which intuitively guarantees that at least a certain number of rows pass per distinct combination of values of a given column set. The distinct sample also helps when aggregates have high skew. When we have skewed data, few rows can contain high values (e.g revenue of a company) in a way that, for a given query that aggregates such values, these rows are crucial to obtain approximate results and hence they should have a higher probability of being selected. 
 
+    
 <p align="center">
     <img src="images/distinct-sample.png" width="500" height="500">
 </p>
-
 
 
 ```python
@@ -663,6 +411,7 @@ val users_sample = spark.sql(s"""
 users_sample.createOrReplaceTempView("users_sample")
 ```
 
+<font size="3">
 The size of the sample is approximate
 
 
@@ -768,6 +517,7 @@ error.show()
 
 When two large tables are joined with a shared key, uniform sampling both the join inputs is not useful. Distinct sampling both the inputs has limited gains if the join keys have many columns and hence, many distinct values. Universe sample allows to sample the inputs of joins. It picks a p fraction of the values of the columns in a set (two tables of the same size). E.g. select all rows with module 500. 
  
+
 <p align="center">
     <img src="images/universe-sample.png" width="500" height="500">
 </p>
@@ -876,7 +626,7 @@ val cities_sample = spark.sql(s"""SELECT * FROM cities WHERE city_id % 500 == 0"
 cities_sample.createOrReplaceTempView("cities_sample")
 
 
-val universe_sample = spark.sql(s"""
+val universe_sample = sdistinctpark.sql(s"""
                     SELECT users_sample.city_id,
                            sum(cities_sample.cash) AS res_sample
                     FROM users_sample 
@@ -918,6 +668,263 @@ universe_sample.show(5)
 
 
 There's a notable difference in the time of processing the join on one query and the other, and the same result is obtained (since the cash is the same on every user, but also if the column follows a normal distribution, it wouldn't alterate significantly the result). 
+
+------
+
+
+## State of the art
+In our research process, we identified two solutions that perform state of the art query sampling. First, we will discuss the Microsoft’s Quickr system to perform sampling queries on Big Data. Then, we will present BlinkDB, a query engine to run distributed approximate SQL queries, which is being developed jointly by the MIT and UC Berkley. 
+
+Additionally, we will review the research that has already been made to perform approximate queries in Spark, although so far, we have only found implementations using RDD and nothing open-sourced. 
+
+ 
+ 
+## QuickR: Lazily Approximating Complex AdHoc Queries in Big Data Clusters 
+
+
+
+    
+https://www.microsoft.com/en-us/research/wp-content/uploads/2016/06/quickr-2.pdf 
+
+In the year 2016, Microsoft presented a system called QuickR that approximates the answer to complex queries by injecting samplers on the fly and without requiring pre-sampled data. Through a cost-based optimizer, they generate query plans with appropriate sample operators at the most adequate location, providing also an accuracy analysis to not miss any little group. The results show that QuickR improves substantially the performance in a large segment of TPC-DS benchmark queries, using a 2x fewer resources in the cluster and with a mean error of only the 10% in aggregations.  
+
+
+How did they accomplish that? 
+
+By analyzing the queries and taking into account the statistics of the tables, the system decides whether to sample the data or not, and which sampling technique will deliver the most accurate answer. In the paper, they describe the implementation of three different types of sampling techniques, which are already described in the sections above:
+
+- **Uniform**: All elements have the same probability to be selected. 
+
+- **Universe**: Picks a p fraction of the values of the columns in a given set; all rows with such value are passed by this sampler. 
+
+- **Distinct**: Sampling technique that guarantees all groups in the data  are selected at least a determinate number of times.  
+
+They also implement logical optimization rules to propagate the operator through projections and joins (left, right, both or none of them) to retrieve less data in early stages of the query. The system also allows exploring confidence intervals and other estimators of individual operators after the query completes, as part of an accuracy analysis. 
+
+An analysis of approximability of big data queries shows: 
+
+1. Distribution of queries over input datasets is heavy-tailed. Individual queries use many columns and different combinations of columns (in projection/filtering) such that the additional storage space required to store samples can be prohibitively large. 
+
+2. Queries typically have aggregation operators, and output results are by many orders of magnitude smaller than inputs, so they are approximable. 
+
+3. Several factors hinder approximability: queries use a diverse set of columns requiring extensive stratification. Many queries join large input relations. 
+
+4. Queries are deep, involving multiple effective passes over data including network shuffles. 
+
+------
+## Experience with Approximating Queries in Microsoft’s Production Big-Data Clusters 
+
+    
+    
+https://www.microsoft.com/en-us/research/uploads/prod/2019/04/p698-kandula.pdf  
+
+Three years later than the previous paper talking about the QuickR solution, the error approximation and pushdown rules, they published their overall experience (over tens of production clusters) on using this type of query time sampling. Just to remember, the two main steps of this technique are:  
+
+1. Users add sampling operators on the query 
+
+2. The Query Optimizer transforms the predicate pushing down the operators while ensuring the accuracy is still intact  
+
+Their findings indicate that QuickR proved to be very valuable in production environments. In table 1, we provide a résumé of the conclusions, but you can compare the charts and results by following the link to the published paper.  
+
+
+
+
+- All three samplers are used evenly 
+
+- One third of the queries use multiple sample operators.  
+
+
+
+<p align="center">
+    <img src="images/microsoft.png" >
+</p>
+
+
+
+- The median processing rate for samplers is over 100MBps. Over 95% of samplers process input at over 100Mbps (low processing rate means very little data!) 
+
+- A significant majority of the samplers doesn’t have memory footprint 
+
+- Distinct sampler has more complex implementation (it had to track groups that had a large number of rows) 
+
+- About 30% of the samplers picks less than 1% fraction of input. Many samplers also pick 10% (this was the recommended setting of the manual they provided)  
+
+- Fewer than 10% of the samplers use a probability assignment above 0.25 
+
+- 80% of universe samples are over a single column 
+
+- The 90% of the input column sets of distinct is between 1 and 6 
+
+- Among the jobs that use samplers, only 2% never had to be re-executed. And over the 80% repeat at least 100x each.  
+
+
+The results on the TPC-H Benchmark (http://www.tpc.org/tpc_documents_current_versions/pdf/tpc-h_v2.18.0.pdf) showed that: 
+
+
+- Roughly 8 of 22 queries are unsampled 
+
+- Queries 5, 7, 8 and 9 improve substantially their processing cost  
+
+------
+## BlinkDB 
+
+    
+https://sameeragarwal.github.io/blinkdb_eurosys13.pdf 
+
+BlinkDB proposes and implements an approximate query engine for running interactive SQL queries on large volumes of data. It supports ad-hoc queries with error and response time constraints. 
+
+BlinkDB implements a multi-dimensional sampling strategy that builds and maitnains a variety of samples. Also, it implements a run-time dynamic sample selection strategy that uses parts of a sample to estimate query selectivity and chooses the best samples for satisfying query constraints.  
+
+It handles a variety of queries with diverse error and time constraints. 2s on 17 TB of data with 90-98% accuracy. 
+
+
+
+<p align="center">
+    <img src="images/blinkdb.png" >
+   
+</p>
+
+
+
+To store differently stratified samples, a-priori storage techniques typically use sample storage of 1x to 10x the size of the input. We’ve seen in a benchmark that the smallest input set used by 20% of queries is 3PB. Hence, assuming input popularity can be predicted perfectly, covering 20% of queries will require between 3PB and 30PB of a-priori samples. Such a large sample set is already a substantial fraction of the total input size (120PB).  
+
+------
+## Approximation error bounds in Spark 
+
+https://arxiv.org/pdf/1812.01823.pdf 
+
+This is the single implementation that we have found, not as an open source project, that involves the Spark engine. The publication goes back to 2019 and presents the challenge of Error Bound Estimation. 
+<br/>
+
+
+Data processing pipelines often transform the input dataset in complex ways before aggregating values. This framework  permits sampling at arbitrary points (same as the Microsoft one) before aggregation. Internally constructs a data provenance tree to maintain information about how transformations are clustering data output items to be aggregated. Later on, uses this structure along with multistage sampling theories to compute the approximate aggregate values and corresponding error bounds. Finally, an algorithm is triggered to accomplish the user specifications through dynamic sampling percentages. 
+
+There’s no reference nor knowledge that Spark SQL is being used in this system. They only included some new functions on RDDs  (to support partition/input data item sampling and aggregateByKeyMultiStage function), modifying either the core or using an external package to create the whole logic of it.  
+
+In the end, the evaluation shows that:  
+
+- Multi-stage sampling significantly reduces execution time 
+
+- Partition sampling can lead to larger exec time savings (dropping partitions eliminates overhead) 
+
+- Significant fractions of the keys can be lost. Sampling rates for Word Co-Ocurrence (text mining application) reduce execution time by 40% at the expense of losing 25% of the keys. For these lost keys, the grouping count was of 0.08 * 10 –4 
+
+- Relatively high partition sampling rates (e.g 50%)  can impact error bounds for more rare keys  (increasing the number of lost keys)    
+
+
+------
+## Spark SQL 
+
+https://databricks.com/blog/2015/04/13/deep-dive-into-spark-sqls-catalyst-optimizer.html
+
+
+Understanding the way that Spark SQL works nowadays is key to go further in this investigation. What is already implemented? How  can it be optimized? Is it  mandatory to change the base code? 
+
+The newest component in Apache Spark SQL was Catalyst Optimizer, which is a Query Optimizer that improves executions by applying a series of logical and physical strategies, so the user does not have to worry about techniques such as pushdown operators or behavior of the system. 
+
+The pipeline goes as follow: 
+<center>   
+    <img src="images/catalyst.png" width=800>
+</center> 
+    
+
+
+
+
+Catalyst’s general tree transformation framework it's used in four phases, as shown above: (1) analyzing a logical plan to resolve references, (2) logical plan optimization, (3) physical planning, and (4) code generation to compile parts of the query to Java bytecode. 
+
+The two main elements for mantaining coherence between these stages are:
+- Trees: The main data type in Catalyst is a tree composed of node objets. They are immutable and can be manipulated using functional transformations. They can be seen as the materialization of a Logical Plan, Optimized Logical Plan and Physical Plan. 
+- Rules: Trees can be manipulated using rules, which are functions from a tree to another tree. The most common approach is to use a set of pattern matching functions that find and replace subtrees with a specific structure.
+
+
+### **Sample Operator**
+
+
+The keyword that is used to perform samples is <b>TABLESAMPLE (X PERCENT/ROWS)</b>:  It can be expressed in terms of either a percentage (must be between 0 and 100) or a fixed number of input rows. In the end it will return an approximate number of rows based upon the input criteria.  
+    
+After the query is analyzed, the TABLESAMPLE is transformed to a logical Sample operator, that includes more parameters with default values such as:
+- <i>lowerBound</i>: Lower-bound of the sampling probability (usually 0.0)
+- <i>upperBound</i>: Upper-bound of the sampling probability. The expected fraction sampled will be ub - lb.
+- <i>withReplacement</i>: wether to take out the elements from the orirignal dataset that appears in the sample or mantain them. False as default
+- <i>seed</i>: a seed for sampling. Default at random
+    
+After setting the Tree, the Sample is no longer optimized logically, and the execution would sample at random following a Bernoulli trial on partitioning the data if it's set withoutReplacement or a Poisson distribution (normal) when you don't lose any element. 
+    
+<br/>
+Right now, the spark sample implementation does not allow the logical operator to be pushed down in the Logical Plan Tree. The next Figure shows a simple Logical Plan Tree of a Join operation with a Tablesample at the end of it: 
+
+    
+<p align="center">
+    <img src="images/wopushdown.png" width="400" height="400">
+</p>
+
+Of course the user can acknowledge the distribution and sizes of the tables and change the location of the operator in the query, but to make things even easier for them and move the computation closer to datasources, we want to integrate pushdown for the sampler operator. In this case the sampler would be performed at the largest table (user). 
+ 
+<p align="center">
+    <img src="images/pushdowned.png" width="400" height="400">
+</p>
+
+
+Here's a more practical example of the Spark behaviour when you use the TABLESAMPLE expression on a query. 
+
+
+
+```python
+(1 to 10).map(x => ("a", x)).toDS.createOrReplaceTempView("ta")
+(1 to 10).map(x => ("b", x)).toDS.createOrReplaceTempView("tb")
+
+spark.sql(s"""
+            SELECT *
+            FROM (
+                SELECT * 
+                FROM ta 
+                JOIN tb 
+                    ON ta._2 == tb._2
+                )
+            TABLESAMPLE(1 PERCENT)""").explain(true)
+```
+
+    == Parsed Logical Plan ==
+    'Project [*]
+    +- 'SubqueryAlias `__auto_generated_subquery_name`
+       +- 'Sample 0.0, 0.01, false, 448
+          +- 'Project [*]
+             +- 'Join Inner, ('ta._2 = 'tb._2)
+                :- 'UnresolvedRelation `ta`
+                +- 'UnresolvedRelation `tb`
+    
+    == Analyzed Logical Plan ==
+    _1: string, _2: int, _1: string, _2: int
+    Project [_1#77, _2#78, _1#82, _2#83]
+    +- SubqueryAlias `__auto_generated_subquery_name`
+       +- Sample 0.0, 0.01, false, 448
+          +- Project [_1#77, _2#78, _1#82, _2#83]
+             +- Join Inner, (_2#78 = _2#83)
+                :- SubqueryAlias `ta`
+                :  +- LocalRelation [_1#77, _2#78]
+                +- SubqueryAlias `tb`
+                   +- LocalRelation [_1#82, _2#83]
+    
+    == Optimized Logical Plan ==
+    Sample 0.0, 0.01, false, 448
+    +- Join Inner, (_2#78 = _2#83)
+       :- LocalRelation [_1#77, _2#78]
+       +- LocalRelation [_1#82, _2#83]
+    
+    == Physical Plan ==
+    *(1) Sample 0.0, 0.01, false, 448
+    +- *(1) BroadcastHashJoin [_2#78], [_2#83], Inner, BuildRight
+       :- LocalTableScan [_1#77, _2#78]
+       +- BroadcastExchange HashedRelationBroadcastMode(List(cast(input[1, int, false] as bigint)))
+          +- LocalTableScan [_1#82, _2#83]
+
+
+<font size="3">
+As you can see, the Sample operation appears at the top of the query tree plan, meaning that would be executed 
+after the join.
+It always mantains the position on the tree, it's not pushed down through any operator. 
+</font>
 
 ------
 ## ***MOTIVE:***
@@ -979,10 +986,13 @@ Since this project is aiming to modify and/or extend the current implementation 
 - External Catalog Listeners 
     
 
+ 
+
 
 <p align="center">
     <img src="images/spark-custom.png" width="700" height="300">
 </p>
+
 
 We propose an extension of the following components: 
 
@@ -1007,10 +1017,10 @@ Some rules for the above new operators would improve the performance of the samp
 
 Before each step of the whole process, we have to check that the user tolerance condition is maintained intact, meaning that a set of stats about the estimated error should be calculated. This would include attributes like selectivity, cardinality and so on.  
 
+
 <p align="center">
     <img src="images/modification.png" width="700" height="350">
 </p>
-
 
 ------
 ## ***DISCUSSION***

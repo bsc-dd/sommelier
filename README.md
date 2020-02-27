@@ -81,10 +81,9 @@ Their findings indicate that QuickR proved to be very valuable in production env
 
 - One third of the queries use multiple sample operators.  
 
-
-
-<img src="images/microsoft.png" width="400" height="600">
-
+<p align="center">
+    <img src="images/microsoft.png" >
+</p>
 
 
 - The median processing rate for samplers is over 100MBps. Over 95% of samplers process input at over 100Mbps (low processing rate means very little data!) 
@@ -124,9 +123,10 @@ BlinkDB implements a multi-dimensional sampling strategy that builds and maitnai
 It handles a variety of queries with diverse error and time constraints. 2s on 17 TB of data with 90-98% accuracy. 
 
 
-
-<img src="images/blinkdb.png" width="400" height="600">
-<center>BlinkDB’s Implementation Stack </center>
+<p align="center">
+    <img src="images/blinkdb.png" >
+   
+</p>
 <br/>
 
 
@@ -169,7 +169,7 @@ The newest component in Apache Spark SQL was Catalyst Optimizer, which is a Quer
 
 The pipeline goes as follow: 
 <center>   
-    <img src="images/catalyst.png" width=800>
+    <img src="images/catalyst.png">
 </center> 
     
 
@@ -199,13 +199,15 @@ After setting the Tree, the Sample is no longer optimized logically, and the exe
 <br/>
 Right now, the spark sample implementation does not allow the logical operator to be pushed down in the Logical Plan Tree. The next Figure shows a simple Logical Plan Tree of a Join operation with a Tablesample at the end of it: 
 
-    
-<img src="images/wopushdown.png" width="300" height="600">
- 
+<p align="center">
+    <img src="images/wopushdown.png" width="400" height="400">
+</p>
 
 Of course the user can acknowledge the distribution and sizes of the tables and change the location of the operator in the query, but to make things even easier for them and move the computation closer to datasources, we want to integrate pushdown for the sampler operator. In this case the sampler would be performed at the largest table (user). 
  
-<img src="images/pushdowned.png" width="300" height="600">
+<p align="center">
+    <img src="images/pushdowned.png" width="400" height="400">
+</p>
 
 
 
@@ -263,11 +265,11 @@ spark.sql(s"""
           +- LocalTableScan [_1#82, _2#83]
 
 
-<font size="3">
+
 As you can see, the Sample operation appears at the top of the query tree plan, meaning that would be executed 
 after the join.
 It always mantains the position on the tree, it's not pushed down through any operator. 
-</font>
+
 
 ------
 ## Sampling types
@@ -328,9 +330,9 @@ def randomizeCity= scala.util.Random.nextInt(5).toLong +1
 
 Also known as Simple Random Sampling(SRS), it is assumed that the population is independent and identically distributed (i.i.d). The sample size required to reach a prespecified precision is based on the dispersion variance of the population and the survey precision required. Then the sample units are chosen from the population independently with equal probability, and inferences are conducted using the sample. I.e. We will use this kind of sample when every row from a table has the same probability of being selected. 
 
-
-<img src="images/uniform-sample.png" width="400" height="600">
-
+<p align="center">
+    <img src="images/uniform-sample.png" width="500" height="500">
+</p>
 
 ```python
 (1 to 100000).map(x => User(x, randomizeCity)).toDS.createOrReplaceTempView("users")
@@ -457,8 +459,10 @@ error.show()
  
 The uniform sample is simple but it has some issues that limit it from being used widely. Queries with group-by such as `SELECT X, SUM(Y), GROUP BY X` can miss groups in the answer, especially those corresponding to values of X that have low support. For such queries, we must use a different kind of sample, such as the distinct sampler which intuitively guarantees that at least a certain number of rows pass per distinct combination of values of a given column set. The distinct sample also helps when aggregates have high skew. When we have skewed data, few rows can contain high values (e.g revenue of a company) in a way that, for a given query that aggregates such values, these rows are crucial to obtain approximate results and hence they should have a higher probability of being selected. 
 
-    
-<img src="images/distinct-sample.png" width="400" height="600">
+<p align="center">
+    <img src="images/distinct-sample.png" width="500" height="500">
+</p>
+
 
 
 ```python
@@ -659,7 +663,6 @@ val users_sample = spark.sql(s"""
 users_sample.createOrReplaceTempView("users_sample")
 ```
 
-<font size="3">
 The size of the sample is approximate
 
 
@@ -765,8 +768,9 @@ error.show()
 
 When two large tables are joined with a shared key, uniform sampling both the join inputs is not useful. Distinct sampling both the inputs has limited gains if the join keys have many columns and hence, many distinct values. Universe sample allows to sample the inputs of joins. It picks a p fraction of the values of the columns in a set (two tables of the same size). E.g. select all rows with module 500. 
  
-
-<img src="images/universe-sample.png" width="400" height="600">
+<p align="center">
+    <img src="images/universe-sample.png" width="500" height="500">
+</p>
 
 
 ```python
@@ -975,11 +979,10 @@ Since this project is aiming to modify and/or extend the current implementation 
 - External Catalog Listeners 
     
 
- 
 
-
-<img src="images/spark-custom.png" width="700" height="600">
-
+<p align="center">
+    <img src="images/spark-custom.png" width="700" height="300">
+</p>
 
 We propose an extension of the following components: 
 
@@ -1004,8 +1007,10 @@ Some rules for the above new operators would improve the performance of the samp
 
 Before each step of the whole process, we have to check that the user tolerance condition is maintained intact, meaning that a set of stats about the estimated error should be calculated. This would include attributes like selectivity, cardinality and so on.  
 
+<p align="center">
+    <img src="images/modification.png" width="700" height="350">
+</p>
 
-<img src="images/modification.png" width="700" height="600">
 
 ------
 ## ***DISCUSSION***

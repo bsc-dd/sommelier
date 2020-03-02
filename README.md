@@ -12,7 +12,7 @@ Some experts have written reports to demonstrate its benefits, along with rules 
 
 #### ***Doc***
 
-In the spec.ipynb notebook we present a few examples to better understand the different types of samples that exist and when they should be used.
+In the [spec.ipynb](https://github.com/bsc-dd/sommelier/blob/master/spec.ipynb) notebook we present a few examples to better understand the different types of samples that exist and when they should be used.
 We create synthetic datasets, normally distributed data and skewed data affects query results when sample techniques are used. We will see how the cardinality between data is key. 
 
 ##### ***Discussion***
